@@ -1,0 +1,5 @@
+Virtual Env
+ValveVenv\Scripts\activate
+
+Installed:
+- pip install mss opencv-python pytesseract numpy pandas pyautogui
