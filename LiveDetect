@@ -4,6 +4,8 @@ import numpy as np
 import cv2
 import pytesseract
 import re
+import csv
+from datetime import datetime
 
 # ====== CONFIGURATION ======
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -30,7 +32,16 @@ lvot_keys = [
     "LVOT SV"
 ]
 
-print("Starting LVOT monitor...\n")
+# Create a CSV filename with current date and time
+current_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+csv_file = f"US_Data_{current_time_str}.csv"
+
+# Create CSV file and write header
+with open(csv_file, 'w', newline='') as f:
+    writer = csv.DictWriter(f, fieldnames=["Timestamp"] + lvot_keys)
+    writer.writeheader()
+
+print(f"Starting LVOT monitor and logging to CSV: {csv_file}\n")
 
 with mss.mss() as sct:
     while True:
@@ -58,15 +69,20 @@ with mss.mss() as sct:
         # Create dictionary
         lvot_dict = {}
         for i, key in enumerate(lvot_keys):
-            if i < len(numbers):
-                lvot_dict[key] = numbers[i]
-            else:
-                lvot_dict[key] = None  # if not enough numbers detected
+            lvot_dict[key] = numbers[i] if i < len(numbers) else None
+
+        # Add timestamp
+        lvot_dict["Timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
         # Print dictionary
         print(lvot_dict)
 
-        # Maintain 4 Hz sampling rate
+        # Append row to CSV
+        with open(csv_file, 'a', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=["Timestamp"] + lvot_keys)
+            writer.writerow(lvot_dict)
+
+        # Maintain sampling rate (~5 Hz)
         elapsed = time.time() - start_time
         sleep_time = max(0, 0.2 - elapsed)
         time.sleep(sleep_time)
