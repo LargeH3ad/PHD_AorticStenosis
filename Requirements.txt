@@ -1,0 +1,1 @@
+pip install torch pandas numpy scikit-learn mss opencv-python pytesseract
