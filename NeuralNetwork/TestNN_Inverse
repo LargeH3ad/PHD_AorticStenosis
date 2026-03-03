@@ -1,0 +1,178 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import pandas as pd
+import numpy as np
+import pickle
+import os
+from torch.utils.data import DataLoader, TensorDataset
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+
+# ======================
+# SETTINGS
+# ======================
+# Get the directory of the current script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+DATA_PATH = os.path.join(script_dir, '..', 'DataSets', 'TrendDataBaseNoise.csv')
+G_PATH = os.path.join(script_dir, 'cgan_generator.pt')
+D_PATH = os.path.join(script_dir, 'cgan_discriminator.pt')
+SCALER_PATH = os.path.join(script_dir, 'cgan_scalers.pkl')
+
+BATCH_SIZE = 64
+EPOCHS = 200
+LR = 0.0002       # GANs like a smaller learning rate
+LATENT_DIM = 10   # Size of the random noise vector
+BETA1 = 0.5       # Stability parameter for Adam optimizer
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# ======================
+# LOAD & PREPARE DATA
+# ======================
+df = pd.read_csv(DATA_PATH, header=0)
+data = df.values
+
+# INVERSE MAPPING: 
+# Features (X) = EOA, Vmax, MPG (Indices 3, 4, 5)
+# Targets (y) = C, B, A (Indices 0, 1, 2)
+X = data[:, 3:6]
+y = data[:, 0:3]
+
+scaler_X = StandardScaler()
+scaler_y = StandardScaler()
+X_s = scaler_X.fit_transform(X).astype(np.float32)
+y_s = scaler_y.fit_transform(y).astype(np.float32)
+
+X_train, X_test, y_train, y_test = train_test_split(X_s, y_s, test_size=0.2, random_state=42)
+
+train_ds = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
+train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
+
+# ======================
+# DEFINE CGAN MODELS
+# ======================
+
+class Generator(nn.Module):
+    def __init__(self, latent_dim=10, condition_dim=3, target_dim=3):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(latent_dim + condition_dim, 128),
+            nn.LeakyReLU(0.2),
+            nn.Linear(128, 64),
+            nn.LeakyReLU(0.2),
+            nn.Linear(64, target_dim)
+        )
+
+    def forward(self, z, labels):
+        # Concatenate noise 'z' with the 'desired output' condition
+        combined = torch.cat([z, labels], dim=1)
+        return self.net(combined)
+
+class Discriminator(nn.Module):
+    def __init__(self, target_dim=3, condition_dim=3):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(target_dim + condition_dim, 128),
+            nn.LeakyReLU(0.2),
+            nn.Linear(128, 64),
+            nn.LeakyReLU(0.2),
+            nn.Linear(64, 1),
+            nn.Sigmoid() 
+        )
+
+    def forward(self, params, labels):
+        # Discriminator looks at the (input, output) pair to judge realism
+        combined = torch.cat([params, labels], dim=1)
+        return self.net(combined)
+
+netG = Generator(LATENT_DIM).to(device)
+netD = Discriminator().to(device)
+
+criterion_bce = nn.BCELoss()
+criterion_l1 = nn.L1Loss() # Helper loss for stability
+
+optimizerG = optim.Adam(netG.parameters(), lr=LR, betas=(BETA1, 0.999))
+optimizerD = optim.Adam(netD.parameters(), lr=LR, betas=(BETA1, 0.999))
+
+# ======================
+# TRAINING LOOP
+# ======================
+print(f"Starting Training on {device}...")
+
+for epoch in range(EPOCHS):
+    for i, (real_labels, real_params) in enumerate(train_loader):
+        batch_size = real_labels.size(0)
+        real_labels, real_params = real_labels.to(device), real_params.to(device)
+
+        # Real/Fake target labels for the Discriminator
+        label_real = torch.ones(batch_size, 1).to(device)
+        label_fake = torch.zeros(batch_size, 1).to(device)
+
+        # --- Train Discriminator ---
+        optimizerD.zero_grad()
+        
+        # Loss on real data
+        output_real = netD(real_params, real_labels)
+        lossD_real = criterion_bce(output_real, label_real)
+        
+        # Loss on fake data
+        z = torch.randn(batch_size, LATENT_DIM).to(device)
+        fake_params = netG(z, real_labels)
+        output_fake = netD(fake_params.detach(), real_labels)
+        lossD_fake = criterion_bce(output_fake, label_fake)
+        
+        lossD = lossD_real + lossD_fake
+        lossD.backward()
+        optimizerD.step()
+
+        # --- Train Generator ---
+        optimizerG.zero_grad()
+        
+        output = netD(fake_params, real_labels)
+        lossG_adv = criterion_bce(output, label_real) # Fool the D
+        
+        # Physics-guidance: stay close to actual known values
+        lossG_l1 = criterion_l1(fake_params, real_params) 
+        
+        # Combine losses (100 is a standard weight for L1 in cGANs)
+        lossG = lossG_adv + (100 * lossG_l1)
+        
+        lossG.backward()
+        optimizerG.step()
+
+    if (epoch + 1) % 20 == 0:
+        print(f"Epoch [{epoch+1}/{EPOCHS}] | D Loss: {lossD.item():.4f} | G Loss: {lossG.item():.4f}")
+
+# ======================
+# SAVE MODEL + SCALERS
+# ======================
+# Save Generator (The part you'll actually use for inference)
+torch.save(netG.state_dict(), G_PATH)
+
+# Save Discriminator (In case you want to continue training later)
+torch.save(netD.state_dict(), D_PATH)
+
+# Save Scalers (Essential for transforming future real-world data)
+with open(SCALER_PATH, 'wb') as f:
+    pickle.dump({'scaler_X': scaler_X, 'scaler_y': scaler_y}, f)
+
+print(f"\nTraining complete. Models saved to {G_PATH} and scalers to {SCALER_PATH}.")
+
+# ======================
+# QUICK TEST INFERENCE
+# ======================
+netG.eval()
+with torch.no_grad():
+    test_input = np.array([[11.5, 3.8, 5.4]]) # Example EOA, Vmax, MPG
+    test_scaled = scaler_X.transform(test_input)
+    test_tensor = torch.FloatTensor(test_scaled).to(device)
+    
+    # Generate one sample
+    z_sample = torch.randn(1, LATENT_DIM).to(device)
+    pred_s = netG(z_sample, test_tensor).cpu().numpy()
+    pred_final = scaler_y.inverse_transform(pred_s)
+    
+    print("\nTest Inference for [11.5, 3.8, 5.4]:")
+    print(f"Predicted (C, B, A): {pred_final[0]}")
