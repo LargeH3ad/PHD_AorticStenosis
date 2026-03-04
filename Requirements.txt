@@ -1,1 +1,5 @@
-pip install torch pandas numpy scikit-learn mss opencv-python pytesseract
+pip install mss opencv-python pytesseract numpy pandas pyautogui torch pickle scikit-learn
+
+Need to install tesseract for python
+https://github.com/UB-Mannheim/tesseract/wiki 
+
