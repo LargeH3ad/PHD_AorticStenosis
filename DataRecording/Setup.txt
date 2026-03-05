@@ -1,2 +1,0 @@
-Virtual Env
-ValveVenv\Scripts\activate

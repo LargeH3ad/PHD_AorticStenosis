@@ -3,3 +3,5 @@ pip install mss opencv-python pytesseract numpy pandas pyautogui torch pickle sc
 Need to install tesseract for python
 https://github.com/UB-Mannheim/tesseract/wiki 
 
+Virtual Env
+ValveVenv\Scripts\activate
