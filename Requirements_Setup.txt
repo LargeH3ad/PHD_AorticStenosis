@@ -1,12 +1,16 @@
+
+Need_to_run:
 pip install mss opencv-python pytesseract numpy pandas pyautogui torch pickle scikit-learn pyserial matplotlib nidaqmx 
 
-Need to install:
+Need_to_install:
 tesseract: https://github.com/UB-Mannheim/tesseract/wiki 
 DBViewer: https://sqlitebrowser.org/dl/
-
 NI-DAQmx (2026 Q1): https://www.ni.com/en/support/downloads/drivers/download.ni-daq-mx.html#585854
 
 
 
+
+
+Other_Stuff: 
 Virtual Env
 ValveVenv\Scripts\activate
