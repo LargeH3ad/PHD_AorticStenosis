@@ -1,6 +1,6 @@
 
 Need_to_run:
-pip install mss opencv-python pytesseract numpy pandas pyautogui torch pickle scikit-learn pyserial matplotlib nidaqmx 
+pip install mss opencv-python pytesseract numpy pandas pyautogui torch pickle scikit-learn pyserial matplotlib nidaqmx serial serial-tool
 
 Need_to_install:
 tesseract: https://github.com/UB-Mannheim/tesseract/wiki 
@@ -11,9 +11,7 @@ Quanser SKD: https://github.com/quanser/quanser_sdk_win64/releases
 Then run in command promt (CMD):
 python -m pip install --upgrade --find-links "%QSDK_DIR%python" "%QSDK_DIR%python\quanser_api-2025.11.1-py2.py3-none-any.whl"
 
-
-
-
+#### ------------------------------------ #####
 
 Other_Stuff: 
 Virtual Env
